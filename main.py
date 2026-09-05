@@ -1,12 +1,4 @@
-import tkinter as tk
-from gui import DiceGUI
-
-
-def main():
-    root = tk.Tk()
-    DiceGUI(root)
-    root.mainloop()
-
+from gui import app
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True)

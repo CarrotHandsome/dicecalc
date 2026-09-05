@@ -1,221 +1,243 @@
-import tkinter as tk
-from tkinter import ttk, filedialog
+import base64
 import json
-from engine import Die, KeepIfHigherChance, KeepHighest, roll_dice, simulate
+
+import plotly.graph_objects as go
+from dash import Dash, Input, Output, State, ALL, ctx, dcc, html
+from dash.exceptions import PreventUpdate
+
+from engine import Die, KeepIfHigherChance, roll_dice, simulate_distribution
+
+app = Dash(__name__)
+app.title = "Dice Simulator"
+
+app.layout = html.Div(
+    className="app-container",
+    children=[
+        html.H1("Dice Simulator"),
+
+        dcc.Store(id="die-indices", data=[0]),
+        dcc.Store(id="next-die-index", data=1),
+        dcc.Store(id="die-defaults", data={"0": {"count": "1", "faces": ""}}),
+        dcc.Download(id="download-settings"),
+
+        html.Div(
+            className="section",
+            children=[
+                html.H3("Dice"),
+                html.Button("Add Die", id="add-die-btn", n_clicks=0),
+                html.Div(id="dice-rows-container"),
+            ],
+        ),
+
+        html.Div(
+            className="section",
+            children=[
+                html.H3("Rule Settings"),
+                html.Div(
+                    className="field-row",
+                    children=[
+                        html.Label("Threshold:"),
+                        dcc.Input(id="threshold-input", type="number", value=0.50, step=0.01),
+                        html.Label("Rerolls:"),
+                        dcc.Input(id="rerolls-input", type="number", value=2, step=1),
+                        html.Label("Simulations:"),
+                        dcc.Input(id="simulations-input", type="number", value=100000, step=1),
+                    ],
+                ),
+            ],
+        ),
+
+        html.Div(
+            className="section button-row",
+            children=[
+                html.Button("Roll Once", id="roll-btn", n_clicks=0),
+                html.Button("Run Simulation", id="sim-btn", n_clicks=0),
+                html.Button("Save Settings", id="save-btn", n_clicks=0),
+                dcc.Upload(
+                    id="load-upload",
+                    children=html.Button("Load Settings"),
+                    multiple=False,
+                ),
+            ],
+        ),
+
+        html.Div(
+            className="section",
+            children=[
+                html.H3("Results"),
+                html.Div(id="results-text"),
+                dcc.Graph(id="results-graph"),
+            ],
+        ),
+    ],
+)
 
 
-class DiceGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Dice Simulator")
+def build_dice(counts, faces_list):
+    dice = []
+    for count, faces_str in zip(counts, faces_list):
+        if not count or not faces_str:
+            continue
+        faces = [int(value.strip()) for value in faces_str.split(",") if value.strip()]
+        for _ in range(int(count)):
+            dice.append(Die(faces))
+    return dice
 
-        self.dice_rows = []
 
-        # Dice configuration area
-        dice_frame = ttk.LabelFrame(root, text="Dice")
-        dice_frame.pack(padx=10, pady=10, fill="x")
-
-        ttk.Button(
-            dice_frame,
-            text="Add Die",
-            command=self.add_die
-        ).pack(pady=5)
-
-        self.dice_list = ttk.Frame(dice_frame)
-        self.dice_list.pack(fill="x")
-
-        # Rule settings
-        rules_frame = ttk.LabelFrame(root, text="Rule Settings")
-        rules_frame.pack(padx=10, pady=5, fill="x")
-
-        ttk.Label(rules_frame, text="Threshold:").pack(side="left")
-
-        self.threshold = ttk.Entry(rules_frame, width=10)
-        self.threshold.insert(0, "0.50")
-        self.threshold.pack(side="left", padx=5)
-
-        
-        ttk.Label(rules_frame, text="Rerolls:").pack(side="left")
-
-        self.rerolls = ttk.Entry(rules_frame, width=10)
-        self.rerolls.insert(0, "2")
-        self.rerolls.pack(side="left", padx=5)
-
-        # Simulation count
-        ttk.Label(rules_frame, text="Simulations:").pack(side="left")
-
-        self.simulations = ttk.Entry(rules_frame, width=10)
-        self.simulations.insert(0, "100000")
-        self.simulations.pack(side="left", padx=5)
-
-        ttk.Button(
-            root,
-            text="Roll Once",
-            command=self.run_roll
-        ).pack(pady=5)
-
-        ttk.Button(
-            root,
-            text="Run Simulation",
-            command=self.run_simulation
-        ).pack(pady=5)
-
-        ttk.Button(
-            root,
-            text="Save Settings",
-            command=self.save_settings
-        ).pack(pady=5)
-
-        ttk.Button(
-            root,
-            text="Load Settings",
-            command=self.load_settings
-        ).pack(pady=5)
-
-        # Results
-        results_frame = ttk.LabelFrame(root, text="Results")
-        results_frame.pack(padx=10, pady=10, fill="both", expand=True)
-
-        self.results = tk.Text(results_frame, height=10, width=50)
-        self.results.pack(padx=5, pady=5, fill="both", expand=True)
-    
-
-    def add_die(self):
-        row = ttk.Frame(self.dice_list)
-        row.pack(fill="x", pady=2)
-
-        ttk.Label(row, text="Count:").pack(side="left")
-
-        count = ttk.Entry(row, width=5)
-        count.insert(0, "1")
-        count.pack(side="left", padx=5)
-
-        ttk.Label(row, text="Faces:").pack(side="left")
-
-        faces = ttk.Entry(row, width=30)
-        faces.pack(side="left", padx=5)
-
-        remove = ttk.Button(
-            row,
-            text="Remove",
-            command=lambda: self.remove_die(row)
-        )
-        remove.pack(side="left")
-
-        self.dice_rows.append((row, count, faces))
-
-    def remove_die(self, row):
-        for i, (stored_row, count, faces) in enumerate(self.dice_rows):
-            if stored_row == row:
-                self.dice_rows.pop(i)
-                break
-
-        row.destroy()
-
-    def get_dice(self):
-        dice = []
-        for _, count_entry, faces_entry in self.dice_rows:
-            count = int(count_entry.get())
-            faces = [
-                int(value.strip())
-                for value in faces_entry.get().split(",")
-            ]
-
-            for _ in range(count):
-                dice.append(Die(faces))
-
-        return dice
-    
-    def run_roll(self):
-        dice = self.get_dice()
-        threshold = float(self.threshold.get())
-        rerolls = int(self.rerolls.get())
-        rule = KeepIfHigherChance(threshold)
-        roll_dice(dice, rule, rerolls)
-
-        self.results.delete("1.0", tk.END)
-        self.results.insert(
-            tk.END,
-            str([die.value for die in dice])
-        )
-
-    def run_simulation(self):
-        dice = self.get_dice()
-        threshold = float(self.threshold.get())
-        rerolls = int(self.rerolls.get())
-        rule = KeepIfHigherChance(threshold)
-        sims = int(self.simulations.get())
-        avg = simulate(dice, rule, rerolls, sims)
-
-        self.results.delete("1.0", tk.END)
-        self.results.insert(
-            tk.END,
-            str(avg)
-        )
-
-    def save_settings(self):
-        settings = {
-            "dice": [],
-            "threshold": float(self.threshold.get()),
-            "rerolls": int(self.rerolls.get()),
-            "simulations": int(self.simulations.get())
-        }
-
-        for _, count_entry, faces_entry in self.dice_rows:
-            settings["dice"].append({
-                "count": int(count_entry.get()),
-                "faces": [
-                    int(value.strip())
-                    for value in faces_entry.get().split(",")
-                ]
-            })
-
-        filename = filedialog.asksaveasfilename(
-            title="Save Settings",
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json")]
-        )
-
-        if filename:
-            with open(filename, "w") as file:
-                json.dump(settings, file, indent=4)
-    def load_settings(self):
-        filename = filedialog.askopenfilename(
-            title="Load Settings",
-            filetypes=[("JSON files", "*.json")]
-        )
-
-        if not filename:
-            return
-
-        with open(filename, "r") as file:
-            settings = json.load(file)
-
-        self.threshold.delete(0, tk.END)
-        self.threshold.insert(0, str(settings["threshold"]))
-
-        self.rerolls.delete(0, tk.END)
-        self.rerolls.insert(0, str(settings["rerolls"]))
-
-        self.simulations.delete(0, tk.END)
-        self.simulations.insert(0, str(settings["simulations"]))
-
-        # Remove existing dice rows
-        for row, _, _ in self.dice_rows:
-            row.destroy()
-
-        self.dice_rows.clear()
-
-        # Recreate dice rows
-        for die in settings["dice"]:
-            self.add_die()
-
-            _, count_entry, faces_entry = self.dice_rows[-1]
-
-            count_entry.delete(0, tk.END)
-            count_entry.insert(0, str(die["count"]))
-
-            faces_entry.insert(
-                0,
-                ", ".join(str(face) for face in die["faces"])
+@app.callback(
+    Output("dice-rows-container", "children"),
+    Input("die-indices", "data"),
+    State("die-defaults", "data"),
+)
+def render_dice_rows(indices, defaults):
+    rows = []
+    for index in indices:
+        default = defaults.get(str(index), {"count": "1", "faces": ""})
+        rows.append(
+            html.Div(
+                className="die-row",
+                children=[
+                    html.Label("Count:"),
+                    dcc.Input(
+                        id={"type": "die-count", "index": index},
+                        type="number",
+                        value=default["count"],
+                        min=1,
+                        step=1,
+                    ),
+                    html.Label("Faces (comma-separated):"),
+                    dcc.Input(
+                        id={"type": "die-faces", "index": index},
+                        type="text",
+                        value=default["faces"],
+                    ),
+                    html.Button("Remove", id={"type": "die-remove", "index": index}),
+                ],
             )
+        )
+    return rows
+
+
+@app.callback(
+    Output("die-indices", "data"),
+    Output("next-die-index", "data"),
+    Output("die-defaults", "data"),
+    Input("add-die-btn", "n_clicks"),
+    State("die-indices", "data"),
+    State("next-die-index", "data"),
+    State("die-defaults", "data"),
+    prevent_initial_call=True,
+)
+def add_die(n_clicks, indices, next_index, defaults):
+    defaults = dict(defaults)
+    defaults[str(next_index)] = {"count": "1", "faces": ""}
+    return indices + [next_index], next_index + 1, defaults
+
+
+@app.callback(
+    Output("die-indices", "data", allow_duplicate=True),
+    Input({"type": "die-remove", "index": ALL}, "n_clicks"),
+    State("die-indices", "data"),
+    prevent_initial_call=True,
+)
+def remove_die(_, indices):
+    triggered = ctx.triggered_id
+    if not triggered:
+        raise PreventUpdate
+    # Any callback with an ALL-pattern dependency is treated as "multi" by
+    # Dash, so even this single logical Output must be tuple-wrapped.
+    return ([index for index in indices if index != triggered["index"]],)
+
+
+@app.callback(
+    Output("results-text", "children"),
+    Output("results-graph", "figure"),
+    Input("roll-btn", "n_clicks"),
+    Input("sim-btn", "n_clicks"),
+    State({"type": "die-count", "index": ALL}, "value"),
+    State({"type": "die-faces", "index": ALL}, "value"),
+    State("threshold-input", "value"),
+    State("rerolls-input", "value"),
+    State("simulations-input", "value"),
+    prevent_initial_call=True,
+)
+def compute(roll_clicks, sim_clicks, counts, faces_list, threshold, rerolls, simulations):
+    dice = build_dice(counts, faces_list)
+    if not dice:
+        return "Add at least one die with faces.", go.Figure()
+
+    rule = KeepIfHigherChance(threshold)
+
+    if ctx.triggered_id == "roll-btn":
+        roll_dice(dice, rule, rerolls)
+        values = [die.value for die in dice]
+        fig = go.Figure(go.Bar(x=[f"Die {i + 1}" for i in range(len(values))], y=values))
+        fig.update_layout(title="Roll Result", yaxis_title="Value")
+        return f"Values: {values}  |  Total: {sum(values)}", fig
+
+    results = simulate_distribution(dice, rule, rerolls, simulations)
+    avg = sum(results) / len(results)
+    fig = go.Figure(go.Histogram(x=results))
+    fig.update_layout(title="Simulation Results", xaxis_title="Total", yaxis_title="Frequency")
+    return f"Average total over {simulations} simulations: {avg:.3f}", fig
+
+
+@app.callback(
+    Output("download-settings", "data"),
+    Input("save-btn", "n_clicks"),
+    State({"type": "die-count", "index": ALL}, "value"),
+    State({"type": "die-faces", "index": ALL}, "value"),
+    State("threshold-input", "value"),
+    State("rerolls-input", "value"),
+    State("simulations-input", "value"),
+    prevent_initial_call=True,
+)
+def save_settings(n_clicks, counts, faces_list, threshold, rerolls, simulations):
+    settings = {
+        "dice": [
+            {
+                "count": int(count),
+                "faces": [int(value.strip()) for value in faces_str.split(",") if value.strip()],
+            }
+            for count, faces_str in zip(counts, faces_list)
+            if count and faces_str
+        ],
+        "threshold": threshold,
+        "rerolls": rerolls,
+        "simulations": simulations,
+    }
+    # Same ALL-pattern "multi" wrapping requirement as remove_die above.
+    return (dcc.send_string(json.dumps(settings, indent=4), filename="dice_settings.json"),)
+
+
+@app.callback(
+    Output("die-indices", "data", allow_duplicate=True),
+    Output("next-die-index", "data", allow_duplicate=True),
+    Output("die-defaults", "data", allow_duplicate=True),
+    Output("threshold-input", "value"),
+    Output("rerolls-input", "value"),
+    Output("simulations-input", "value"),
+    Input("load-upload", "contents"),
+    prevent_initial_call=True,
+)
+def load_settings(contents):
+    _, content_string = contents.split(",", 1)
+    settings = json.loads(base64.b64decode(content_string))
+
+    defaults = {
+        str(i): {
+            "count": die["count"],
+            "faces": ", ".join(str(face) for face in die["faces"]),
+        }
+        for i, die in enumerate(settings["dice"])
+    }
+    indices = list(range(len(settings["dice"])))
+
+    return (
+        indices,
+        len(indices),
+        defaults,
+        settings["threshold"],
+        settings["rerolls"],
+        settings["simulations"],
+    )

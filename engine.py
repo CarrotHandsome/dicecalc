@@ -87,11 +87,11 @@ def roll_value(dice):
         sum += d.value
     return sum
 
-def simulate(dice, rule, rerolls, sims):
-    sum = 0
-    for i in range(sims):
-        sum += roll_value(roll_dice(dice, rule, rerolls))
+def simulate_distribution(dice, rule, rerolls, sims):
+    return [roll_value(roll_dice(dice, rule, rerolls)) for _ in range(sims)]
 
-    avg = sum / sims
-    return avg
+
+def simulate(dice, rule, rerolls, sims):
+    results = simulate_distribution(dice, rule, rerolls, sims)
+    return sum(results) / sims
 
