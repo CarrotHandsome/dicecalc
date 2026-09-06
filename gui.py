@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from dash import Dash, Input, Output, State, ALL, ctx, dcc, html
 from dash.exceptions import PreventUpdate
 
-from engine import Die, KeepIfHigherChance, roll_dice, simulate_distribution
+from engine import Die, KeepIfHigherChance, roll_dice, roll_value, simulate_distribution
 
 app = Dash(__name__)
 app.title = "Dice Simulator"
@@ -42,6 +42,8 @@ app.layout = html.Div(
                         dcc.Input(id="rerolls-input", type="number", value=2, step=1),
                         html.Label("Simulations:"),
                         dcc.Input(id="simulations-input", type="number", value=100000, step=1),
+                        html.Label("Slots:"),
+                        dcc.Input(id="slots-input", type="number", value=None, min=1, step=1, placeholder="all"),
                     ],
                 ),
             ],
@@ -159,9 +161,10 @@ def remove_die(_, indices):
     State("threshold-input", "value"),
     State("rerolls-input", "value"),
     State("simulations-input", "value"),
+    State("slots-input", "value"),
     prevent_initial_call=True,
 )
-def compute(roll_clicks, sim_clicks, counts, faces_list, threshold, rerolls, simulations):
+def compute(roll_clicks, sim_clicks, counts, faces_list, threshold, rerolls, simulations, slots):
     dice = build_dice(counts, faces_list)
     if not dice:
         return "Add at least one die with faces.", go.Figure()
@@ -171,11 +174,15 @@ def compute(roll_clicks, sim_clicks, counts, faces_list, threshold, rerolls, sim
     if ctx.triggered_id == "roll-btn":
         roll_dice(dice, rule, rerolls)
         values = [die.value for die in dice]
+        total = roll_value(dice, slots)
         fig = go.Figure(go.Bar(x=[f"Die {i + 1}" for i in range(len(values))], y=values))
         fig.update_layout(title="Roll Result", yaxis_title="Value")
-        return f"Values: {values}  |  Total: {sum(values)}", fig
+        if slots is not None and slots < len(values):
+            kept = sorted(values, reverse=True)[:slots]
+            return f"Values: {values}  |  Kept ({slots} slots): {kept}  |  Total: {total}", fig
+        return f"Values: {values}  |  Total: {total}", fig
 
-    results = simulate_distribution(dice, rule, rerolls, simulations)
+    results = simulate_distribution(dice, rule, rerolls, simulations, slots)
     avg = sum(results) / len(results)
     fig = go.Figure(go.Histogram(x=results))
     fig.update_layout(title="Simulation Results", xaxis_title="Total", yaxis_title="Frequency")
@@ -190,9 +197,10 @@ def compute(roll_clicks, sim_clicks, counts, faces_list, threshold, rerolls, sim
     State("threshold-input", "value"),
     State("rerolls-input", "value"),
     State("simulations-input", "value"),
+    State("slots-input", "value"),
     prevent_initial_call=True,
 )
-def save_settings(n_clicks, counts, faces_list, threshold, rerolls, simulations):
+def save_settings(n_clicks, counts, faces_list, threshold, rerolls, simulations, slots):
     settings = {
         "dice": [
             {
@@ -205,6 +213,7 @@ def save_settings(n_clicks, counts, faces_list, threshold, rerolls, simulations)
         "threshold": threshold,
         "rerolls": rerolls,
         "simulations": simulations,
+        "slots": slots,
     }
     # Same ALL-pattern "multi" wrapping requirement as remove_die above.
     return (dcc.send_string(json.dumps(settings, indent=4), filename="dice_settings.json"),)
@@ -217,6 +226,7 @@ def save_settings(n_clicks, counts, faces_list, threshold, rerolls, simulations)
     Output("threshold-input", "value"),
     Output("rerolls-input", "value"),
     Output("simulations-input", "value"),
+    Output("slots-input", "value"),
     Input("load-upload", "contents"),
     prevent_initial_call=True,
 )
@@ -240,4 +250,5 @@ def load_settings(contents):
         settings["threshold"],
         settings["rerolls"],
         settings["simulations"],
+        settings.get("slots"),
     )

@@ -81,17 +81,17 @@ def roll_dice(dice, rule, rerolls):
 
     return dice
 
-def roll_value(dice):
-    sum = 0
-    for d in dice:
-        sum += d.value
-    return sum
+def roll_value(dice, slots=None):
+    values = sorted((d.value for d in dice), reverse=True)
+    if slots is not None:
+        values = values[:slots]
+    return sum(values)
 
-def simulate_distribution(dice, rule, rerolls, sims):
-    return [roll_value(roll_dice(dice, rule, rerolls)) for _ in range(sims)]
+def simulate_distribution(dice, rule, rerolls, sims, slots=None):
+    return [roll_value(roll_dice(dice, rule, rerolls), slots) for _ in range(sims)]
 
 
-def simulate(dice, rule, rerolls, sims):
-    results = simulate_distribution(dice, rule, rerolls, sims)
+def simulate(dice, rule, rerolls, sims, slots=None):
+    results = simulate_distribution(dice, rule, rerolls, sims, slots)
     return sum(results) / sims
 
