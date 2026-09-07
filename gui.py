@@ -7,7 +7,7 @@ from dash.exceptions import PreventUpdate
 
 from engine import Die, KeepIfHigherChance, roll_dice, roll_value, simulate_distribution
 
-app = Dash(__name__)
+app = Dash(__name__, requests_pathname_prefix='/dicecalc/')
 app.title = "Dice Simulator"
 
 app.layout = html.Div(
