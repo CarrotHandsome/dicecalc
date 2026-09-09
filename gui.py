@@ -2,13 +2,42 @@ import base64
 import json
 
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, State, ALL, ctx, dcc, html
+from dash import Dash, Input, Output, State, ALL, MATCH, ctx, dcc, html
 from dash.exceptions import PreventUpdate
 
 from engine import Die, KeepIfHigherChance, roll_dice, roll_value, simulate_distribution
 
+
+def make_die_row(index, count="1", faces=""):
+    return html.Div(
+        id={"type": "die-row", "index": index},
+        className="die-row",
+        children=[
+            html.Label("Count:"),
+            html.Button("-", id={"type": "die-count-minus", "index": index}, className="step-btn"),
+            dcc.Input(
+                id={"type": "die-count", "index": index},
+                type="number",
+                value=count,
+                min=1,
+                step=1,
+                className="die-count-field",
+            ),
+            html.Button("+", id={"type": "die-count-plus", "index": index}, className="step-btn"),
+            html.Label("Faces (comma-separated):"),
+            dcc.Input(
+                id={"type": "die-faces", "index": index},
+                type="text",
+                value=faces,
+                className="die-faces-field",
+            ),
+            html.Button("Remove", id={"type": "die-remove", "index": index}),
+        ],
+    )
+
+
 app = Dash(
-    __name__, 
+    __name__,
     routes_pathname_prefix='/dicecalc/',
     requests_pathname_prefix='/dicecalc/'
 )
@@ -19,9 +48,7 @@ app.layout = html.Div(
     children=[
         html.H1("Dice Simulator"),
 
-        dcc.Store(id="die-indices", data=[0]),
         dcc.Store(id="next-die-index", data=1),
-        dcc.Store(id="die-defaults", data={"0": {"count": "1", "faces": ""}}),
         dcc.Download(id="download-settings"),
 
         html.Div(
@@ -29,7 +56,7 @@ app.layout = html.Div(
             children=[
                 html.H3("Dice"),
                 html.Button("Add Die", id="add-die-btn", n_clicks=0),
-                html.Div(id="dice-rows-container"),
+                html.Div(id="dice-rows-container", children=[make_die_row(0)]),
             ],
         ),
 
@@ -41,13 +68,16 @@ app.layout = html.Div(
                     className="field-row",
                     children=[
                         html.Label("Threshold:"),
-                        dcc.Input(id="threshold-input", type="number", value=0.50, step=0.01),
+                        dcc.Input(id="threshold-input", type="number", value=0.50, min=0, max=1, step=0.01),
+
                         html.Label("Rerolls:"),
-                        dcc.Input(id="rerolls-input", type="number", value=2, step=1),
+                        dcc.Input(id="rerolls-input", type="number", value=2, min=0, step=1),
+
                         html.Label("Simulations:"),
-                        dcc.Input(id="simulations-input", type="number", value=100000, step=1),
+                        dcc.Input(id="simulations-input", type="number", value=100000, min=1, step=1),
+
                         html.Label("Slots:"),
-                        dcc.Input(id="slots-input", type="number", value=None, min=1, step=1, placeholder="all"),
+                        dcc.Input(id="slots-input", type="number", value=None, step=1, placeholder="all"),
                     ],
                 ),
             ],
@@ -91,68 +121,75 @@ def build_dice(counts, faces_list):
 
 
 @app.callback(
+    Output("slots-input", "value", allow_duplicate=True),
+    Input("slots-input", "value"),
+    prevent_initial_call=True,
+)
+def normalize_slots(current_value):
+    # "Slots" defaults to "all" (None). Dash's built-in stepper/typing
+    # handles the raw increment/decrement; this just catches the field
+    # reaching 0 (via typing, or stepping down from 1) and treats that as
+    # "back to all" rather than a literal zero.
+    if current_value is not None and current_value <= 0:
+        return None
+    raise PreventUpdate
+
+
+@app.callback(
+    Output({"type": "die-count", "index": MATCH}, "value"),
+    Input({"type": "die-count-minus", "index": MATCH}, "n_clicks"),
+    Input({"type": "die-count-plus", "index": MATCH}, "n_clicks"),
+    State({"type": "die-count", "index": MATCH}, "value"),
+    prevent_initial_call=True,
+)
+def adjust_die_count(minus_clicks, plus_clicks, current_value):
+    # Dash's built-in number-input stepper only works for plain string ids;
+    # it breaks (clears the field) for pattern-matching ids like die-count's,
+    # so this field gets its own explicit +/- buttons instead, with Dash's
+    # broken native stepper hidden via CSS (see .die-row .dash-input-stepper).
+    if not ctx.triggered_id or ctx.triggered[0]["value"] is None:
+        raise PreventUpdate
+    try:
+        value = int(current_value)
+    except (TypeError, ValueError):
+        value = 1
+    if ctx.triggered_id["type"] == "die-count-minus":
+        return max(1, value - 1)
+    return value + 1
+
+
+@app.callback(
     Output("dice-rows-container", "children"),
-    Input("die-indices", "data"),
-    State("die-defaults", "data"),
-)
-def render_dice_rows(indices, defaults):
-    rows = []
-    for index in indices:
-        default = defaults.get(str(index), {"count": "1", "faces": ""})
-        rows.append(
-            html.Div(
-                className="die-row",
-                children=[
-                    html.Label("Count:"),
-                    dcc.Input(
-                        id={"type": "die-count", "index": index},
-                        type="number",
-                        value=default["count"],
-                        min=1,
-                        step=1,
-                    ),
-                    html.Label("Faces (comma-separated):"),
-                    dcc.Input(
-                        id={"type": "die-faces", "index": index},
-                        type="text",
-                        value=default["faces"],
-                    ),
-                    html.Button("Remove", id={"type": "die-remove", "index": index}),
-                ],
-            )
-        )
-    return rows
-
-
-@app.callback(
-    Output("die-indices", "data"),
     Output("next-die-index", "data"),
-    Output("die-defaults", "data"),
     Input("add-die-btn", "n_clicks"),
-    State("die-indices", "data"),
+    State("dice-rows-container", "children"),
     State("next-die-index", "data"),
-    State("die-defaults", "data"),
     prevent_initial_call=True,
 )
-def add_die(n_clicks, indices, next_index, defaults):
-    defaults = dict(defaults)
-    defaults[str(next_index)] = {"count": "1", "faces": ""}
-    return indices + [next_index], next_index + 1, defaults
+def add_die(n_clicks, rows, next_index):
+    # Appends a fresh row without touching the existing ones, so whatever a
+    # user has already typed/stepped into other rows is left completely
+    # alone rather than being regenerated from some stale snapshot.
+    return rows + [make_die_row(next_index)], next_index + 1
 
 
 @app.callback(
-    Output("die-indices", "data", allow_duplicate=True),
+    Output("dice-rows-container", "children", allow_duplicate=True),
     Input({"type": "die-remove", "index": ALL}, "n_clicks"),
-    State("die-indices", "data"),
+    State("dice-rows-container", "children"),
     prevent_initial_call=True,
 )
-def remove_die(_, indices):
+def remove_die(_, rows):
     triggered = ctx.triggered_id
     if not triggered:
         raise PreventUpdate
-    # Any callback with an ALL-pattern dependency is treated as "multi" by
-    # Dash, so even this single logical Output must be tuple-wrapped.
-    return ([index for index in indices if index != triggered["index"]],)
+    # ALL-pattern callbacks also fire when a new matching component first
+    # appears on the page (e.g. a die row was just added), not only on a
+    # real click. Such spurious fires report n_clicks as None; only treat
+    # this as an actual removal request when a real click value came in.
+    if not ctx.triggered or ctx.triggered[0]["value"] is None:
+        raise PreventUpdate
+    return [row for row in rows if row["props"]["id"]["index"] != triggered["index"]]
 
 
 @app.callback(
@@ -219,14 +256,12 @@ def save_settings(n_clicks, counts, faces_list, threshold, rerolls, simulations,
         "simulations": simulations,
         "slots": slots,
     }
-    # Same ALL-pattern "multi" wrapping requirement as remove_die above.
-    return (dcc.send_string(json.dumps(settings, indent=4), filename="dice_settings.json"),)
+    return dcc.send_string(json.dumps(settings, indent=4), filename="dice_settings.json")
 
 
 @app.callback(
-    Output("die-indices", "data", allow_duplicate=True),
+    Output("dice-rows-container", "children", allow_duplicate=True),
     Output("next-die-index", "data", allow_duplicate=True),
-    Output("die-defaults", "data", allow_duplicate=True),
     Output("threshold-input", "value"),
     Output("rerolls-input", "value"),
     Output("simulations-input", "value"),
@@ -238,19 +273,14 @@ def load_settings(contents):
     _, content_string = contents.split(",", 1)
     settings = json.loads(base64.b64decode(content_string))
 
-    defaults = {
-        str(i): {
-            "count": die["count"],
-            "faces": ", ".join(str(face) for face in die["faces"]),
-        }
+    rows = [
+        make_die_row(i, count=str(die["count"]), faces=", ".join(str(face) for face in die["faces"]))
         for i, die in enumerate(settings["dice"])
-    }
-    indices = list(range(len(settings["dice"])))
+    ]
 
     return (
-        indices,
-        len(indices),
-        defaults,
+        rows,
+        len(rows),
         settings["threshold"],
         settings["rerolls"],
         settings["simulations"],

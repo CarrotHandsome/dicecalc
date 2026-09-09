@@ -32,10 +32,30 @@ body {
     flex-wrap: wrap;
 }
 
-.die-row input[type="number"] {
+/* Dash's built-in +/- steppers on number inputs auto-hide themselves via a
+   CSS container query when their wrapper is narrower than 99px. Widen the
+   wrapper so the steppers stay visible instead of colliding with a cramped
+   layout. */
+.dash-input-container {
+    width: 110px;
+}
+
+/* Dash's built-in stepper is broken for pattern-matching component ids
+   (used for the per-die Count field) - it clears the field instead of
+   stepping. Hide it there; a custom .step-btn pair replaces it instead. */
+.die-count-field.dash-input-container {
     width: 60px;
 }
 
-.die-row input[type="text"] {
+.die-count-field .dash-input-stepper {
+    display: none;
+}
+
+.die-faces-field.dash-input-container {
     width: 200px;
+}
+
+.step-btn {
+    width: 28px;
+    padding: 2px 0;
 }
