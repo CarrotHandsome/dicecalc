@@ -1,50 +1,185 @@
+:root {
+    --bg: #1a1613;
+    --surface: #241f18;
+    --surface-raised: #2d2620;
+    --field-bg: #1c1712;
+    --border: #3d362a;
+    --text: #f0e9dc;
+    --text-muted: #a89984;
+    --accent: #d1a35c;
+    --accent-hover: #e2b876;
+    --accent-text: #1a1613;
+    --danger: #b6614f;
+    --danger-hover: #c97363;
+    --focus-ring: rgba(209, 163, 92, 0.4);
+
+    --font-display: "Fraunces", Georgia, serif;
+    --font-body: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+
+    /* Retint Dash's own built-in number-input stepper to match the palette. */
+    --Dash-Fill-Inverse-Strong: var(--surface-raised);
+    --Dash-Fill-Primary-Hover: var(--accent);
+    --Dash-Fill-Primary-Active: var(--accent-hover);
+    --Dash-Text-Primary: var(--text);
+    --Dash-Stroke-Weak: var(--border);
+}
+
+* {
+    box-sizing: border-box;
+}
+
 body {
-    font-family: sans-serif;
-    max-width: 700px;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+}
+
+.app-container {
+    max-width: 640px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 40px 24px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
 }
 
-.section {
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    padding: 12px 16px;
-    margin-bottom: 16px;
+.app-header h1 {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+    text-wrap: balance;
 }
 
-.die-row {
+.subtitle {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.panel h2 {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+.panel-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin: 6px 0;
+    justify-content: space-between;
+    gap: 12px;
 }
 
-.field-row {
+/* Dice rows */
+
+.die-list {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 12px;
 }
 
-.button-row {
+.die-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
     display: flex;
-    gap: 8px;
+    align-items: flex-end;
     flex-wrap: wrap;
+    gap: 14px;
 }
 
-/* Dash's built-in +/- steppers on number inputs auto-hide themselves via a
-   CSS container query when their wrapper is narrower than 99px. Widen the
-   wrapper so the steppers stay visible instead of colliding with a cramped
-   layout. */
+.faces-field {
+    flex: 1 1 200px;
+}
+
+/* Labeled numeric fields (shared by Rule Settings and per-die Count) */
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 14px;
+}
+
+.stat-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.stat-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.stat-control {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+}
+
+/* Inputs */
+
+.stat-field .dash-input-container,
 .dash-input-container {
-    width: 110px;
+    width: 100%;
+    background: var(--field-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Dash's built-in stepper is broken for pattern-matching component ids
-   (used for the per-die Count field) - it clears the field instead of
-   stepping. Hide it there; a custom .step-btn pair replaces it instead. */
+.dash-input-container:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.dash-input-element {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    padding: 9px 10px;
+    width: 100%;
+    outline: none;
+}
+
+.dash-input-element::placeholder {
+    color: var(--text-muted);
+    opacity: 0.75;
+}
+
+.mono-field .dash-input-element {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Per-die Count: Dash's built-in stepper is broken for pattern-matching
+   ids (clears the field instead of stepping), so it's hidden here and a
+   custom .step-btn pair is used instead. */
 .die-count-field.dash-input-container {
-    width: 60px;
+    width: 64px;
 }
 
 .die-count-field .dash-input-stepper {
@@ -52,10 +187,150 @@ body {
 }
 
 .die-faces-field.dash-input-container {
-    width: 200px;
+    width: 100%;
 }
 
 .step-btn {
-    width: 28px;
-    padding: 2px 0;
+    flex: 0 0 auto;
+    width: 34px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-raised);
+    color: var(--text);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.step-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Buttons */
+
+.btn {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn:hover {
+    border-color: var(--accent);
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+.btn-danger:hover {
+    background: var(--danger);
+    color: var(--text);
+    border-color: var(--danger);
+}
+
+.btn-remove {
+    padding: 8px 14px;
+    font-size: 0.82rem;
+}
+
+.action-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.save-name-input.dash-input-container {
+    width: 160px;
+    flex: 0 0 auto;
+}
+
+#load-upload {
+    display: inline-flex;
+}
+
+/* Results */
+
+.results-summary {
+    color: var(--text);
+    font-size: 0.95rem;
+    min-height: 1.3em;
+}
+
+.js-plotly-plot,
+.plot-container {
+    width: 100% !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+    }
+}
+
+/* Larger-end smartphones and below */
+@media (max-width: 480px) {
+    .app-container {
+        padding: 24px 16px 48px;
+        gap: 16px;
+    }
+
+    .app-header h1 {
+        font-size: 1.6rem;
+    }
+
+    .panel {
+        padding: 16px;
+        border-radius: 12px;
+    }
+
+    .die-card {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .faces-field {
+        flex: 0 0 auto;
+    }
+
+    .stat-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .action-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .action-row .btn,
+    .save-name-input.dash-input-container,
+    #load-upload,
+    #load-upload > *,
+    #load-upload .btn {
+        width: 100%;
+    }
 }
