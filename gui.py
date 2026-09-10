@@ -1,11 +1,21 @@
 import base64
 import json
+import time
 
+from flask import Response
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, State, ALL, MATCH, ctx, dcc, html
 from dash.exceptions import PreventUpdate
 
 from engine import Die, KeepIfHigherChance, roll_dice, roll_value, simulate_distribution
+
+# Holds the most recently saved settings file for the /download/settings.json
+# route below. dcc.Download's JS blob-URL + synthetic-click mechanism is
+# unreliable on iOS Safari (the download silently fails with no error), so
+# Save Settings instead navigates to a real server-rendered file response
+# with a Content-Disposition header - the same mechanism any plain download
+# link uses, which browsers (including iOS Safari) handle natively.
+_pending_download = {"content": None, "filename": "dice_settings.json"}
 
 PLOTLY_FONT = "Public Sans, sans-serif"
 PLOTLY_ACCENT = "#d1a35c"
@@ -96,6 +106,17 @@ app = Dash(
 )
 app.title = "Dice Simulator"
 
+
+@app.server.route("/dicecalc/download/settings.json")
+def download_settings_file():
+    if _pending_download["content"] is None:
+        return Response("Nothing to download yet - click Save Settings first.", status=404)
+    return Response(
+        _pending_download["content"],
+        mimetype="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{_pending_download["filename"]}"'},
+    )
+
 app.index_string = """<!DOCTYPE html>
 <html>
     <head>
@@ -130,7 +151,7 @@ app.layout = html.Div(
         ),
 
         dcc.Store(id="next-die-index", data=1),
-        dcc.Download(id="download-settings"),
+        dcc.Location(id="download-redirect", refresh=True),
 
         html.Div(
             className="panel",
@@ -348,7 +369,7 @@ def sanitize_filename(name):
 
 
 @app.callback(
-    Output("download-settings", "data"),
+    Output("download-redirect", "href"),
     Input("save-btn", "n_clicks"),
     State({"type": "die-count", "index": ALL}, "value"),
     State({"type": "die-faces", "index": ALL}, "value"),
@@ -376,7 +397,12 @@ def save_settings(n_clicks, counts, faces_list, threshold, rerolls, simulations,
         "simulations": simulations,
         "slots": slots,
     }
-    return dcc.send_string(json.dumps(settings, indent=4), filename=sanitize_filename(save_name))
+    _pending_download["content"] = json.dumps(settings, indent=4)
+    _pending_download["filename"] = sanitize_filename(save_name)
+    # A cache-busting query param guarantees the href actually changes even
+    # if the same filename is saved twice in a row, so the navigation (and
+    # therefore the download) fires every time.
+    return f"/dicecalc/download/settings.json?v={int(time.time() * 1000)}"
 
 
 @app.callback(
